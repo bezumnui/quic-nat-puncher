@@ -1,6 +1,5 @@
-import asyncio
+﻿import asyncio
 import platform
-import socket
 from contextlib import asynccontextmanager
 
 from peer_connect import peer_connect
