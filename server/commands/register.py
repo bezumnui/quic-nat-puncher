@@ -54,7 +54,7 @@ class RegisterConsumer(CommandConsumer):
             # socket = self.ping_client.get_socket_dup()
             try:
                 async with self.ping_client.mutex:
-                    await loop.sock_sendto(self.ping_client.socket, b"punch", (address, port))
+                    await loop.sock_sendto(self.ping_client.socket, b"punch",  ("::ffff:" + address, port, 0, 0))
                 await asyncio.sleep(4)
             except OSError as error:
                 print(f"nat_puncher send failed: {error}")
