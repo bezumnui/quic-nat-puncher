@@ -27,4 +27,5 @@ class PingClient:
             async with peer_connect(self.get_socket_dup(), host, port, alpn_protocols) as connection:
                 yield connection
         finally:
+
             self.mutex.release()

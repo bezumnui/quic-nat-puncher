@@ -18,7 +18,7 @@ async def get_address(host, port):
 
 
 @asynccontextmanager
-async def peer_connect(sock, host, port, alpn_protocols=None) -> AsyncGenerator[QuicConnectionProtocol, None]:
+async def peer_connect(sock, host, port, alpn_protocols=None, close_transport=False) -> AsyncGenerator[QuicConnectionProtocol, None]:
     if alpn_protocols is None:
         alpn_protocols = ["quic_punching"]
 
@@ -46,7 +46,8 @@ async def peer_connect(sock, host, port, alpn_protocols=None) -> AsyncGenerator[
     finally:
         protocol.close()
         await protocol.wait_closed()
-        # transport.close()
+        if close_transport:
+            transport.close()
 
 def create_peer_protocol():
     loop = asyncio.get_running_loop()

@@ -1,5 +1,6 @@
 import asyncio
 import socket
+import time
 import uuid
 
 from aioquic.asyncio import connect
@@ -35,6 +36,7 @@ async def nat_puncher(sock: socket.socket, server_address, server_udp_port, serv
     while True:
         loop = asyncio.get_running_loop()
         await loop.sock_sendto(sock, b"punch", (server_address, server_udp_port))
+        await loop.sock_sendto(sock, b"punch", (server_address, server_udp_port))
         await loop.sock_sendto(sock, b"punch", (server_address, server_ping_port))
         await asyncio.sleep(4)
 
@@ -54,6 +56,11 @@ async def start_host(server_address, local_port, is_tcp):
     )
 
 
+    sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_udp_port))
+    sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_ping_port))
+    sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_ping_port))
+    sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_udp_port))
+    sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_udp_port))
     sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_udp_port))
     asyncio.ensure_future(nat_puncher(sock, server_address, server_udp_port, server_ping_port))
     print("open_connection sent")
