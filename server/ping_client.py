@@ -10,7 +10,7 @@ from utils import create_ipv6_socket
 class PingClient:
     def __init__(self, port: int):
         self.port = port
-        self.socket = create_ipv6_socket("0.0.0.0", port)
+        self.socket = create_ipv6_socket("::", port)
         self.mutex = asyncio.Lock()
 
     def get_socket_dup(self):
