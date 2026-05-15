@@ -36,16 +36,16 @@ class QuicListener:
 
 
 async def nat_puncher(sock: socket.socket, server_address, server_udp_port, server_ping_port):
-    while True:
-        loop = asyncio.get_running_loop()
-        try:
-            await loop.sock_sendto(sock, b"punch", (server_address, server_udp_port))
-            await loop.sock_sendto(sock, b"punch", (server_address, server_ping_port))
-            await asyncio.sleep(4)
-        except OSError as error:
-            print(f"nat_puncher send failed: {error}")
+    # while True:
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.sock_sendto(sock, b"punch", (server_address, server_udp_port))
+        await loop.sock_sendto(sock, b"punch", (server_address, server_ping_port))
+        await asyncio.sleep(4)
+    except OSError as error:
+        print(f"nat_puncher send failed: {error}")
 
-        await asyncio.sleep(1)
+    await asyncio.sleep(1)
 
 def get_socket_dup(sock):
     if platform.system().lower() == "windows":
@@ -69,7 +69,6 @@ async def start_host(server_address, local_port, is_tcp):
 
 
 
-    transport = await start_server(sock, id_, local_port, is_tcp)
 
     # asyncio.ensure_future(print_server(sock))
     config = QuicConfiguration(
@@ -81,11 +80,13 @@ async def start_host(server_address, local_port, is_tcp):
 
     sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_udp_port))
 
-    # asyncio.ensure_future(nat_puncher(sock, server_address, server_udp_port, server_ping_port))
+    await nat_puncher(sock, server_address, server_udp_port, server_ping_port)
     print("open_connection sent")
 
     await asyncio.sleep(1)
     print("Connection to the server..")
+    transport = await start_server(sock, id_, local_port, is_tcp)
+
 
     async with connect(server_address, server_quic_port, configuration=config) as connection:
         print("Connected.")
