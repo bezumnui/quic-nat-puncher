@@ -1,8 +1,6 @@
 ﻿import asyncio
 import socket
 
-from aioquic.quic.events import StreamDataReceived
-
 
 class CommandUtils:
     @staticmethod
@@ -43,4 +41,19 @@ def create_socket(host, port):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((host, port))
     sock.setblocking(False)
+    return sock
+
+
+
+def create_ipv6_socket(local_host="::", local_port=0):
+    sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+    completed = False
+    try:
+        sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        sock.bind((local_host, local_port, 0, 0))
+        completed = True
+    finally:
+        if not completed:
+            sock.close()
+
     return sock

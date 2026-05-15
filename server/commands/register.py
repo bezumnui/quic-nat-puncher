@@ -31,6 +31,7 @@ class RegisterConsumer(CommandConsumer):
             return await CommandUtils.direct_write_eof(writer, "error:invalid id")
 
         if not (client := self.clients.get_client_or_None(id_)):
+            print(client, self.clients.get_clients())
             return await CommandUtils.direct_write_eof(writer, "error:client was not found. try again")
 
 

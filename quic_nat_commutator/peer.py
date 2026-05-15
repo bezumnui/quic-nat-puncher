@@ -128,11 +128,10 @@ class PipeServer:
             )
 
 
-async def start_peer(host_ip, host_port, is_tcp):
+async def start_peer(host_ip, host_port, is_tcp, server_ip):
     print(host_ip, host_port)
     local_ip = "127.0.0.1"
     local_port = 12666
-    server_ip = "127.0.0.1"
     server_port = 12777
 
     print("First ping request..")

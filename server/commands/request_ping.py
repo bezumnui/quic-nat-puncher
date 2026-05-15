@@ -7,6 +7,7 @@ from aioquic.quic.configuration import QuicConfiguration
 from clients import Clients
 from command_consumer import CommandConsumer
 from commands.register import UUID_LEN
+from ping_client import PingClient
 from utils import Utils, CommandUtils
 
 
@@ -16,7 +17,8 @@ class RequestPingConsumer(CommandConsumer):
     # reqping:0.0.0.0:54345 peer-to-server
     # reqping:0.0.0.0:12345:uuid server-to-host
 
-    def __init__(self, clients: Clients):
+    def __init__(self, clients: Clients, ping_client: PingClient):
+        self.ping_client = ping_client
         self.clients = clients
 
     async def consume(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -37,6 +39,7 @@ class RequestPingConsumer(CommandConsumer):
             return await CommandUtils.direct_write_eof(writer, "error:port not a number")
 
         if not (client := self.clients.get_client_with_address(destination_ip, destination_port)):
+            print(client, self.clients)
             return await CommandUtils.direct_write_eof(writer, "error:client was not found")
 
         try:
@@ -47,9 +50,7 @@ class RequestPingConsumer(CommandConsumer):
             logging.error(e)
 
     async def send_to_host(self, client, destination_ip, destination_port, writer):
-        async with connect(destination_ip, destination_port,
-                           configuration=QuicConfiguration(is_client=True, verify_mode=False,
-                                                           alpn_protocols=["quic_punching"], )) as connection:
+        async with self.ping_client.connect(destination_ip, destination_port) as connection:
             ip, port = writer.__getattribute__("peer_address")
             client_reader, client_writer = await connection.create_stream()
             client_writer.write(f"reqping:{ip}:{port}:{client.connection_id}".encode())

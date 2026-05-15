@@ -31,10 +31,18 @@ class QuicListener:
                 return
 
 
+async def nat_puncher(sock: socket.socket, server_address, server_udp_port, server_ping_port):
+    while True:
+        loop = asyncio.get_running_loop()
+        await loop.sock_sendto(sock, b"punch", (server_address, server_udp_port))
+        await loop.sock_sendto(sock, b"punch", (server_address, server_ping_port))
+        await asyncio.sleep(4)
+
 async def start_host(server_address, local_port, is_tcp):
     print(local_port)
     server_quic_port = 12777
     server_udp_port = 12767
+    server_ping_port = 12677
 
     sock = create_socket()
     id_ = str(uuid.uuid4())
@@ -45,18 +53,23 @@ async def start_host(server_address, local_port, is_tcp):
         verify_mode=False
     )
 
+
     sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_udp_port))
+    asyncio.ensure_future(nat_puncher(sock, server_address, server_udp_port, server_ping_port))
+    print("open_connection sent")
 
     await asyncio.sleep(1)
+    print("Connection to the server..")
 
     async with connect(server_address, server_quic_port, configuration=config) as connection:
+        print("Connected.")
         reader, writer = await connection.create_stream()
         writer.write(f"register:{id_}".encode())
         await writer.drain()
         response = await reader.read(1024)
 
         if not (text := Utils.decode_or_none(response)):
-            print(f"Failed to refister: {response}")
+            print(f"Failed to register: {response}")
             return
 
         if not len(args := text.split(":")) == 3:

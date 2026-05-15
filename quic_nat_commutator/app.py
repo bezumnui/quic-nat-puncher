@@ -16,10 +16,8 @@ def input_for_y_or_n(prompt: str):
 
 async def main():
     default_server_ip = "130.61.248.57"
-    if not (server_ip := input_for_y_or_n(f"What is the server [Default is {default_server_ip}]?")):
+    if not (server_ip := input(f"What is the server [Default is {default_server_ip}]?")):
         server_ip = default_server_ip
-
-
 
     is_host = input_for_y_or_n("Are you host?")
     is_tcp = input_for_y_or_n("Are you using TCP?")
@@ -36,7 +34,7 @@ async def main():
 
         if port_raw.isdigit():
             print("Starting...")
-            await start_peer(ip, int(port_raw), is_tcp)
+            await start_peer(ip, int(port_raw), is_tcp, server_ip)
 
     print("error. invalid inpput")
 
