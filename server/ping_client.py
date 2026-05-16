@@ -1,6 +1,5 @@
-import asyncio
+﻿import asyncio
 import platform
-import socket
 from contextlib import asynccontextmanager
 
 from peer_connect import peer_connect
@@ -27,5 +26,4 @@ class PingClient:
             async with peer_connect(self.get_socket_dup(), host, port, alpn_protocols) as connection:
                 yield connection
         finally:
-
             self.mutex.release()

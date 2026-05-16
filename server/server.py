@@ -39,9 +39,10 @@ async def start_quic(host, quick_port, clients, ping_port):
         alpn_protocols=["quic_punching"],
     )
     server_config.load_cert_chain("cert.pem", "key.pem")
+    ping_client = PingClient(ping_port)
     listener = QuicListener([
-        RequestPingConsumer(clients, PingClient(ping_port)),
-        RegisterConsumer(clients)
+        RequestPingConsumer(clients, ping_client),
+        RegisterConsumer(clients, ping_client)
     ])
     await serve(host, quick_port, configuration=server_config, stream_handler=listener.stream_handler, create_protocol=PeerAwareQuicProtocol)
 

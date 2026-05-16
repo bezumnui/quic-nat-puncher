@@ -10,9 +10,10 @@ class PunchConsumerHost(HostCommandConsumer):
     PREFIX = "punch"
 
     async def consume(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        await reader.readexactly(len(self.PREFIX))
         writer.write(b"ack")
         await writer.drain()
-        writer.write_eof()
+        pass
 
     async def can_consume(self, data: bytes):
         return CommandUtils.has_prefix(data, self.PREFIX)

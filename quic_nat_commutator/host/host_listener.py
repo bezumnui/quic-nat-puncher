@@ -1,6 +1,7 @@
 import asyncio
+import os
+import platform
 import socket
-import time
 import uuid
 
 from aioquic.asyncio import connect
@@ -22,23 +23,46 @@ class QuicListener:
         self.commands = commands
 
     def stream_handler(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        print('streaming request')
+        print('New incoming connection')
         asyncio.ensure_future(self.on_new_message(reader, writer))
 
     async def on_new_message(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        data = await reader.read(4096)
-        for command in self.commands:
-            if await command.try_consume(data, reader, writer):
-                return
+        try:
+            while True:
+                data = await reader.read(self.BUFFER_SIZE)
+                if not data:
+                    break
+                for command in self.commands:
+                    if await command.try_consume(data, reader, writer):
+                        break
+        except Exception as e:
+            print("on_new_message error:", e)
 
 
 async def nat_puncher(sock: socket.socket, server_address, server_udp_port, server_ping_port):
-    while True:
-        loop = asyncio.get_running_loop()
-        await loop.sock_sendto(sock, b"punch", (server_address, server_udp_port))
+    # while True:
+    loop = asyncio.get_running_loop()
+    try:
         await loop.sock_sendto(sock, b"punch", (server_address, server_udp_port))
         await loop.sock_sendto(sock, b"punch", (server_address, server_ping_port))
         await asyncio.sleep(4)
+    except OSError as error:
+        print(f"nat_puncher send failed: {error}")
+
+    await asyncio.sleep(1)
+
+
+def get_socket_dup(sock):
+    if platform.system().lower() == "windows":
+        return socket.fromshare(sock.share(os.getpid()))
+    return sock.dup()
+
+
+async def print_server(sock):
+    loop = asyncio.get_event_loop()
+    d, a = await loop.sock_recvfrom(sock, 4096)
+    print(d, a, "received")
+
 
 async def start_host(server_address, local_port, is_tcp):
     print(local_port)
@@ -48,25 +72,22 @@ async def start_host(server_address, local_port, is_tcp):
 
     sock = create_socket()
     id_ = str(uuid.uuid4())
-    transport = await start_server(sock, id_, local_port, is_tcp)
+
+    # asyncio.ensure_future(print_server(sock))
     config = QuicConfiguration(
         is_client=True,
         alpn_protocols=["quic_punching"],
         verify_mode=False
     )
 
+    sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_udp_port))
 
-    sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_udp_port))
-    sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_ping_port))
-    sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_ping_port))
-    sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_udp_port))
-    sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_udp_port))
-    sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_udp_port))
-    asyncio.ensure_future(nat_puncher(sock, server_address, server_udp_port, server_ping_port))
+    await nat_puncher(sock, server_address, server_udp_port, server_ping_port)
     print("open_connection sent")
 
     await asyncio.sleep(1)
     print("Connection to the server..")
+    transport = await start_server(sock, id_, local_port, is_tcp)
 
     async with connect(server_address, server_quic_port, configuration=config) as connection:
         print("Connected.")
@@ -101,7 +122,9 @@ async def start_server(sock: socket, id_: str, local_port, is_tcp):
     )
     server_config.load_cert_chain("cert.pem", "key.pem")
 
-    listener = QuicListener([RequestPingConsumerHost(sock, id_), PunchConsumerHost(), PipeConsumer(local_host, local_port, is_tcp), InvalidConsumer()])
+    listener = QuicListener(
+        [PipeConsumer(local_host, local_port, is_tcp), RequestPingConsumerHost(sock, id_), PunchConsumerHost(),
+         InvalidConsumer()])
 
     loop = asyncio.get_running_loop()
     transport, protocol = await loop.create_datagram_endpoint(
