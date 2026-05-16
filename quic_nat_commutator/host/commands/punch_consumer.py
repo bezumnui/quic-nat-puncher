@@ -13,7 +13,6 @@ class PunchConsumerHost(HostCommandConsumer):
         await reader.readexactly(len(self.PREFIX))
         writer.write(b"ack")
         await writer.drain()
-        pass
 
     async def can_consume(self, data: bytes):
         return CommandUtils.has_prefix(data, self.PREFIX)
