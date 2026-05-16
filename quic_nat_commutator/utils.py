@@ -48,6 +48,7 @@ async def pipe_data(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, 
             await mutex.acquire()
         if prefix:
             writer.write(prefix)
+        print("pipe: data:", data)
         writer.write(data)
         await writer.drain()
 

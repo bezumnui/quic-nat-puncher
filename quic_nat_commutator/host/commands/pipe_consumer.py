@@ -44,7 +44,6 @@ class PipeConsumer(HostCommandConsumer):
     async def send_to_local(self, reader):
         punch = b"punch"
         while True:
-            print("pref")
             try:
                 if not (prefix := await reader.readexactly(len(self.PREFIX))):
                     print("Peer closed the connection")
