@@ -12,7 +12,8 @@ class PunchConsumerHost(HostCommandConsumer):
     async def consume(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         writer.write(b"ack")
         await writer.drain()
-        writer.write_eof()
+        print("punch")
+        pass
 
     async def can_consume(self, data: bytes):
         return CommandUtils.has_prefix(data, self.PREFIX)

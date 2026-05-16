@@ -42,6 +42,8 @@ async def pipe_data(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, 
     if remove_bytes:
         await reader.read(remove_bytes)
     while len(data := await reader.read(4096)) > 0:
+        if data == b'ack':
+            continue
         if prefix:
             writer.write(prefix)
         writer.write(data)

@@ -1,5 +1,6 @@
 import asyncio
 import socket
+import time
 from asyncio import BaseProtocol, DatagramTransport, StreamWriter, StreamReader
 
 from aioquic.asyncio import QuicConnectionProtocol, connect
@@ -127,6 +128,15 @@ class PipeServer:
                 pipe_data(server_reader, host_writer, remove_bytes=len(b"pipe:")),
             )
 
+async def keep_punching(connection: QuicConnectionProtocol):
+    reader, writer = await connection.create_stream()
+    while True:
+        try:
+            writer.write("punch".encode())
+            await writer.drain()
+            await asyncio.sleep(2)
+        except Exception as e:
+            print(e, "while punching")
 
 async def start_peer(host_ip, host_port, is_tcp, server_ip):
     print(host_ip, host_port)
@@ -178,7 +188,7 @@ async def start_peer(host_ip, host_port, is_tcp, server_ip):
                 sock=sock
             )
             print("Mode: UDP")
-
+        asyncio.ensure_future(keep_punching(connection))
         print(f"Successfully! Your address to connect is: {local_ip}:{local_port}")
 
         await asyncio.Future()

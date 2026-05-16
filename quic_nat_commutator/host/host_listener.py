@@ -16,7 +16,6 @@ from host.commands.request_ping_consumer import RequestPingConsumerHost
 from utils import create_socket, Utils
 
 
-
 class QuicListener:
     BUFFER_SIZE = 4096
 
@@ -29,7 +28,7 @@ class QuicListener:
 
     async def on_new_message(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         data = await reader.read(4096)
-        print("data recieved", data)
+        print("data received", data)
         for command in self.commands:
             if await command.try_consume(data, reader, writer):
                 return
@@ -47,6 +46,7 @@ async def nat_puncher(sock: socket.socket, server_address, server_udp_port, serv
 
     await asyncio.sleep(1)
 
+
 def get_socket_dup(sock):
     if platform.system().lower() == "windows":
         return socket.fromshare(sock.share(os.getpid()))
@@ -55,8 +55,9 @@ def get_socket_dup(sock):
 
 async def print_server(sock):
     loop = asyncio.get_event_loop()
-    d, a =await loop.sock_recvfrom(sock, 4096)
+    d, a = await loop.sock_recvfrom(sock, 4096)
     print(d, a, "received")
+
 
 async def start_host(server_address, local_port, is_tcp):
     print(local_port)
@@ -67,16 +68,12 @@ async def start_host(server_address, local_port, is_tcp):
     sock = create_socket()
     id_ = str(uuid.uuid4())
 
-
-
-
     # asyncio.ensure_future(print_server(sock))
     config = QuicConfiguration(
         is_client=True,
         alpn_protocols=["quic_punching"],
         verify_mode=False
     )
-
 
     sock.sendto(f"open_connection:{id_}".encode(), (server_address, server_udp_port))
 
@@ -86,7 +83,6 @@ async def start_host(server_address, local_port, is_tcp):
     await asyncio.sleep(1)
     print("Connection to the server..")
     transport = await start_server(sock, id_, local_port, is_tcp)
-
 
     async with connect(server_address, server_quic_port, configuration=config) as connection:
         print("Connected.")
@@ -121,7 +117,9 @@ async def start_server(sock: socket, id_: str, local_port, is_tcp):
     )
     server_config.load_cert_chain("cert.pem", "key.pem")
 
-    listener = QuicListener([PipeConsumer(local_host, local_port, is_tcp), RequestPingConsumerHost(sock, id_), PunchConsumerHost(), InvalidConsumer()])
+    listener = QuicListener(
+        [PipeConsumer(local_host, local_port, is_tcp), RequestPingConsumerHost(sock, id_), PunchConsumerHost(),
+         InvalidConsumer()])
 
     loop = asyncio.get_running_loop()
     transport, protocol = await loop.create_datagram_endpoint(
