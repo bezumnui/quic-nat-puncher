@@ -32,7 +32,6 @@ class PipeConsumer(HostCommandConsumer):
     async def send_to_remote(self, writer):
         while True:
             data, address = await self.loop.sock_recvfrom(self.socket, 4096)
-            print(data, address)
             if not data:
                 break
 
@@ -60,17 +59,14 @@ class PipeConsumer(HostCommandConsumer):
                 break
 
             size_data = await reader.readexactly(2)
-            print("size_data: ", size_data)
             size = int.from_bytes(size_data, "big")
 
             data = await reader.readexactly(size)
 
-            print(data)
             await self.loop.sock_sendall(
                 self.socket,
                 data,
             )
-            print("sent")
         print("eof send_to_local")
 
     async def send_by_tcp(self, reader, writer):

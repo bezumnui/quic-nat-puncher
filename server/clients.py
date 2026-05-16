@@ -23,7 +23,7 @@ class Clients:
         for client in self.clients.values():
             if client.ip == ip and client.port == port:
                 return client
-
+        # 80.227.84.164.50832
         return None
 
     def get_clients(self):

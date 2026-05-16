@@ -39,18 +39,17 @@ async def request_ping(server_ip, server_port, host_ip, host_port):
     return await send_command_to_host(f"reqping:{host_ip}:{host_port}".encode(), server_ip, server_port)
 
 
-async def punch(host_ip, host_port):
-    return await send_command_to_host("punch".encode(), host_ip, host_port)
+async def ping(host_ip, host_port):
+    return await send_command_to_host("ping".encode(), host_ip, host_port)
 
 
 async def handle_local_connection_tcp(
-        connection: QuicConnectionProtocol,
+        quic_reader,
+        quic_writer,
         tcp_reader: asyncio.StreamReader,
         tcp_writer: asyncio.StreamWriter,
         mutex: asyncio.Lock,
 ) -> None:
-    quic_reader, quic_writer = await connection.create_stream()
-
     await asyncio.gather(
         pipe_data(tcp_reader, quic_writer, mutex=mutex),
         pipe_data(quic_reader, tcp_writer),
@@ -58,39 +57,32 @@ async def handle_local_connection_tcp(
 
 
 class UDPPipe(BaseProtocol):
-    def __init__(self, protocol: QuicConnectionProtocol, pipe_socked: socket.socket, mutex: asyncio.Lock) -> None:
+    def __init__(self, quic_reader: StreamReader, quic_writer: StreamWriter, pipe_socked: socket.socket,
+                 mutex: asyncio.Lock) -> None:
         self.mutex = mutex
-        self.protocol: QuicConnectionProtocol = protocol
         self.pipe_socked = pipe_socked
         self.loop = asyncio.get_running_loop()
-        self.quic_reader: StreamReader | None = None
-        self.quic_writer: StreamWriter | None = None
+        self.quic_reader: StreamReader = quic_reader
+        self.quic_writer: StreamWriter = quic_writer
         self.address = None
 
-        asyncio.ensure_future(self.connect())
-
-    async def connect(self):
-        self.quic_reader, self.quic_writer = await self.protocol.create_stream()
         asyncio.ensure_future(self.read_server())
 
-    async def disconnect(self):
-        self.protocol.close()
-        await self.protocol.wait_closed()
-
     def datagram_received(self, data: bytes, address: tuple[str, int]):
-        if self.address is None:
-            self.address = address
+        # if self.address is None:
+            # asyncio.ensure_future(keep_punching(self.quic_writer, self.mutex))
+        self.address = address
 
-        if self.address != address:
-            return
+        # if self.address != address:
+        #     return
 
         async def handler():
-            if not self.quic_writer or not self.quic_reader:
-                return
             async with self.mutex:
                 self.quic_writer.write(b"pipe:")
                 self.quic_writer.write(len(data).to_bytes(2, "big"))
                 self.quic_writer.write(data)
+                await self.quic_writer.drain()
+                self.quic_writer.write("punch".encode())
                 await self.quic_writer.drain()
 
         asyncio.ensure_future(handler())
@@ -100,48 +92,37 @@ class UDPPipe(BaseProtocol):
             while True:
                 size_data = await self.quic_reader.readexactly(2)
                 size = int.from_bytes(size_data, "big")
-
                 data = await self.quic_reader.readexactly(size)
-                await self.loop.sock_sendto(
-                    self.pipe_socked,
-                    data,
-                    self.address,
-                )
+
+                if self.address is None:
+                    print("drop from server: local UDP address is not known yet", data)
+                    continue
+
+                await self.loop.sock_sendto(self.pipe_socked, data, self.address)
+
+        except Exception as exception:
+            print("read_server crashed:", repr(exception))
+
 
         except asyncio.IncompleteReadError:
             print("connection closed")
             pass
 
 
-class PipeServer:
-    def __init__(self, sock: socket.socket, host_ip: str, host_port: int):
-        self.socket = sock
-        self.host_port = host_port
-        self.host_ip = host_ip
-
-    def stream_handler(self, server_reader: asyncio.StreamReader, server_writer: asyncio.StreamWriter):
-        asyncio.ensure_future(self.on_new_stream(server_reader, server_writer))
-
-    async def on_new_stream(self, server_reader: asyncio.StreamReader, server_writer: asyncio.StreamWriter):
-        async with peer_connect(self.socket, self.host_port, self.host_ip, ["quic-pipe"]) as connection:
-            host_reader, host_writer = await connection.create_stream()
-
-            await asyncio.gather(
-                pipe_data(host_reader, server_writer),
-                pipe_data(server_reader, host_writer, remove_bytes=len(b"pipe:")),
-            )
-
-async def keep_punching(connection: QuicConnectionProtocol, mutex: asyncio.Lock):
-    reader, writer = await connection.create_stream()
+async def keep_punching(writer, mutex: asyncio.Lock):
+    await asyncio.sleep(1)
     while True:
         try:
-            async with mutex:
-                writer.write("punch".encode())
-                await writer.drain()
+            # async with mutex:
+            writer.write("punch".encode())
+            await writer.drain()
 
             await asyncio.sleep(2)
         except Exception as e:
             print(e, "while punching")
+
+
+# когда работает этот метод, то я не получаю код
 
 async def start_peer(host_ip, host_port, is_tcp, server_ip):
     print(host_ip, host_port)
@@ -165,9 +146,9 @@ async def start_peer(host_ip, host_port, is_tcp, server_ip):
 
     punch_success = False
     try:
-        print("Punching the nat...")
+        print("pinging the host...")
 
-        await punch(host_ip, host_port)
+        await ping(host_ip, host_port)
         punch_success = True
         print("Nat was punched successfully.")
     finally:
@@ -178,26 +159,36 @@ async def start_peer(host_ip, host_port, is_tcp, server_ip):
     mutex = asyncio.Lock()
 
     async with connect(host_ip, host_port, configuration=CONFIG, local_port=SOCKET_PORT) as connection:
+        print(f"Connected with port: {connection._transport.get_extra_info("sockname")[1]}")
+        quik_reader, quic_writer = await connection.create_stream()
 
         if is_tcp:
             await asyncio.start_server(
-                lambda reader, writer: handle_local_connection_tcp(connection, reader, writer, mutex),
+                lambda reader, writer: handle_local_connection_tcp(quik_reader, quic_writer, reader, writer, mutex),
                 local_ip,
                 local_port,
             )
             print("Mode: TCP")
 
+
+
         else:
             sock = create_socket(local_ip, local_port)
             loop = asyncio.get_running_loop()
+
             await loop.create_datagram_endpoint(
-                lambda: UDPPipe(connection, sock, mutex),
+                lambda: UDPPipe(quik_reader, quic_writer, sock, mutex),
                 sock=sock
             )
+            # socket_name = transport.get_extra_info("sockname")
+
             print("Mode: UDP")
+        asyncio.ensure_future(keep_punching(quic_writer, mutex))
+
         print(f"Successfully! Your address to connect is: {local_ip}:{local_port}")
-        await asyncio.ensure_future(keep_punching(connection, mutex))
+
+        await asyncio.Future()
     print("connection closed.")
 
-        # await asyncio.Future()
+    # await asyncio.Future()
     return None

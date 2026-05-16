@@ -10,6 +10,7 @@ from aioquic.quic.configuration import QuicConfiguration
 
 from host.command_consumer import HostCommandConsumer
 from host.commands.invalid_consumer import InvalidConsumer
+from host.commands.ping_consumer import PingConsumerHost
 from host.commands.pipe_consumer import PipeConsumer
 from host.commands.punch_consumer import PunchConsumerHost
 from host.commands.request_ping_consumer import RequestPingConsumerHost
@@ -123,7 +124,7 @@ async def start_server(sock: socket, id_: str, local_port, is_tcp):
     server_config.load_cert_chain("cert.pem", "key.pem")
 
     listener = QuicListener(
-        [PipeConsumer(local_host, local_port, is_tcp), RequestPingConsumerHost(sock, id_), PunchConsumerHost(),
+        [PipeConsumer(local_host, local_port, is_tcp), RequestPingConsumerHost(sock, id_), PunchConsumerHost(), PingConsumerHost(),
          InvalidConsumer()])
 
     loop = asyncio.get_running_loop()
