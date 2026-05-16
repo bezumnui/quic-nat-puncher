@@ -135,6 +135,7 @@ async def keep_punching(connection: QuicConnectionProtocol):
             writer.write("punch".encode())
             await writer.drain()
             await asyncio.sleep(2)
+            print("PUCNH SENT")
         except Exception as e:
             print(e, "while punching")
 
@@ -188,8 +189,9 @@ async def start_peer(host_ip, host_port, is_tcp, server_ip):
                 sock=sock
             )
             print("Mode: UDP")
-        asyncio.ensure_future(keep_punching(connection))
         print(f"Successfully! Your address to connect is: {local_ip}:{local_port}")
+        await asyncio.ensure_future(keep_punching(connection))
+    print("connection closed.")
 
-        await asyncio.Future()
+        # await asyncio.Future()
     return None
