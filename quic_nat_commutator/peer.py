@@ -43,18 +43,111 @@ async def ping(host_ip, host_port):
     return await send_command_to_host("ping".encode(), host_ip, host_port)
 
 
-async def handle_local_connection_tcp(
-        quic_reader,
-        quic_writer,
+# async def handle_local_connection_tcp(
+#         quic_reader,
+#         quic_writer,
+#         tcp_reader: asyncio.StreamReader,
+#         tcp_writer: asyncio.StreamWriter,
+#         mutex: asyncio.Lock,
+# ) -> None:
+#     await asyncio.gather(
+#         pipe_data(tcp_reader, quic_writer, mutex=mutex, prefix=b"pipe:"),
+#         pipe_data(quic_reader, tcp_writer),
+#     )
+class TCPPipe:
+    def __init__(
+        self,
+        quic_reader: asyncio.StreamReader,
+        quic_writer: asyncio.StreamWriter,
+        mutex: asyncio.Lock,
+    ):
+        self.quic_reader = quic_reader
+        self.quic_writer = quic_writer
+        self.mutex = mutex
+        self.next_connection_id = 1
+        self.tcp_writers: dict[int, asyncio.StreamWriter] = {}
+
+        asyncio.create_task(self.read_from_quic())
+
+    async def handle_tcp_client(
+        self,
         tcp_reader: asyncio.StreamReader,
         tcp_writer: asyncio.StreamWriter,
-        mutex: asyncio.Lock,
-) -> None:
-    await asyncio.gather(
-        pipe_data(tcp_reader, quic_writer, mutex=mutex),
-        pipe_data(quic_reader, tcp_writer),
-    )
+    ):
+        connection_id = self.next_connection_id
+        self.next_connection_id += 1
 
+        self.tcp_writers[connection_id] = tcp_writer
+
+        try:
+            while True:
+                data = await tcp_reader.read(4096)
+
+                if not data:
+                    break
+
+                async with self.mutex:
+                    self.quic_writer.write(b"pipe:")
+                    self.quic_writer.write(connection_id.to_bytes(4, "big"))
+                    self.quic_writer.write(len(data).to_bytes(2, "big"))
+                    self.quic_writer.write(data)
+                    await self.quic_writer.drain()
+
+        finally:
+            self.tcp_writers.pop(connection_id, None)
+            tcp_writer.close()
+            await tcp_writer.wait_closed()
+
+            async with self.mutex:
+                self.quic_writer.write(b"close")
+                self.quic_writer.write(connection_id.to_bytes(4, "big"))
+                await self.quic_writer.drain()
+
+    async def read_from_quic(self):
+        while True:
+            message_type = await self.quic_reader.readexactly(5)
+
+            if message_type == b"punch":
+                continue
+
+            if message_type == b"close":
+                connection_id = int.from_bytes(
+                    await self.quic_reader.readexactly(4),
+                    "big",
+                )
+
+                tcp_writer = self.tcp_writers.pop(connection_id, None)
+
+                if tcp_writer:
+                    tcp_writer.close()
+                    await tcp_writer.wait_closed()
+
+                continue
+
+            if message_type != b"pipe:":
+                print("unknown message:", message_type)
+                continue
+
+            connection_id = int.from_bytes(
+                await self.quic_reader.readexactly(4),
+                "big",
+            )
+
+            size = int.from_bytes(
+                await self.quic_reader.readexactly(2),
+                "big",
+            )
+
+            data = await self.quic_reader.readexactly(size)
+
+            tcp_writer = self.tcp_writers.get(connection_id)
+
+            if tcp_writer is None:
+                print("drop from server: unknown tcp connection", connection_id)
+                continue
+
+            tcp_writer.write(data)
+            await tcp_writer.drain()
 
 class UDPPipe(BaseProtocol):
     def __init__(self, quic_reader: StreamReader, quic_writer: StreamWriter, pipe_socked: socket.socket,
@@ -113,9 +206,9 @@ async def keep_punching(writer, mutex: asyncio.Lock):
     await asyncio.sleep(1)
     while True:
         try:
-            # async with mutex:
-            writer.write("punch".encode())
-            await writer.drain()
+            async with mutex:
+                writer.write("punch".encode())
+                await writer.drain()
 
             await asyncio.sleep(2)
         except Exception as e:
@@ -163,11 +256,14 @@ async def start_peer(host_ip, host_port, is_tcp, server_ip):
         quik_reader, quic_writer = await connection.create_stream()
 
         if is_tcp:
+            tcp_pipe = TCPPipe(quik_reader, quic_writer, mutex)
+
             await asyncio.start_server(
-                lambda reader, writer: handle_local_connection_tcp(quik_reader, quic_writer, reader, writer, mutex),
+                tcp_pipe.handle_tcp_client,
                 local_ip,
                 local_port,
             )
+
             print("Mode: TCP")
 
 

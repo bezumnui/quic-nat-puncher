@@ -23,7 +23,6 @@ class CommandUtils:
         writer.write_eof()
 
 
-
 class Utils:
     @staticmethod
     def int_or_none(text: str) -> int | None:
@@ -38,22 +37,33 @@ class Utils:
         except UnicodeDecodeError:
             return None
 
-async def pipe_data(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, prefix: bytes = b'', remove_bytes = 0, mutex: asyncio.Lock = None):
-    if remove_bytes:
-        await reader.read(remove_bytes)
-    while len(data := await reader.read(4096)) > 0:
-        if data == b'ack':
-            continue
-        if mutex:
-            await mutex.acquire()
-        if prefix:
-            writer.write(prefix)
-        print("pipe: data:", data)
-        writer.write(data)
-        await writer.drain()
 
-        if mutex:
-            mutex.release()
+async def pipe_data(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
+                    prefix: bytes = b'', remove_bytes=0, mutex: asyncio.Lock = None, add_size = False):
+    if remove_bytes:
+        await reader.readexactly(remove_bytes)
+
+    while len(data := await reader.read(4096)) > 0:
+        if data == b'punch':
+            continue
+
+        try:
+            if mutex:
+                await mutex.acquire()
+            if prefix:
+                writer.write(prefix)
+
+            print("pipe: data:", data)
+            writer.write(data)
+            try:
+                await writer.drain()
+            except ConnectionResetError:
+                print("Connection closed")
+        finally:
+            if mutex:
+                mutex.release()
+
+
 
 
 def create_socket(host=None, port=None):
@@ -63,6 +73,7 @@ def create_socket(host=None, port=None):
         sock.bind((host, port))
     sock.setblocking(False)
     return sock
+
 
 def create_ipv6_socket(local_host="::", local_port=0):
     sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
