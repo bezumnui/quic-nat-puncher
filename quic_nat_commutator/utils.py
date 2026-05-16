@@ -38,16 +38,21 @@ class Utils:
         except UnicodeDecodeError:
             return None
 
-async def pipe_data(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, prefix: bytes = b'', remove_bytes = 0):
+async def pipe_data(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, prefix: bytes = b'', remove_bytes = 0, mutex: asyncio.Lock = None):
     if remove_bytes:
         await reader.read(remove_bytes)
     while len(data := await reader.read(4096)) > 0:
         if data == b'ack':
             continue
+        if mutex:
+            await mutex.acquire()
         if prefix:
             writer.write(prefix)
         writer.write(data)
         await writer.drain()
+
+        if mutex:
+            mutex.release()
 
 
 def create_socket(host=None, port=None):

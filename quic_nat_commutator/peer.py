@@ -24,6 +24,7 @@ async def send_command_to_host(command, server_ip, server_port):
             SOCKET_PORT = connection._transport.get_extra_info("sockname")[1]
             print(SOCKET_PORT)
         reader, writer = await connection.create_stream()
+
         writer.write(command)
         await writer.drain()
 
@@ -46,11 +47,12 @@ async def handle_local_connection_tcp(
         connection: QuicConnectionProtocol,
         tcp_reader: asyncio.StreamReader,
         tcp_writer: asyncio.StreamWriter,
+        mutex: asyncio.Lock,
 ) -> None:
     quic_reader, quic_writer = await connection.create_stream()
 
     await asyncio.gather(
-        pipe_data(tcp_reader, quic_writer),
+        pipe_data(tcp_reader, quic_writer, mutex=mutex),
         pipe_data(quic_reader, tcp_writer),
     )
 
@@ -128,14 +130,15 @@ class PipeServer:
                 pipe_data(server_reader, host_writer, remove_bytes=len(b"pipe:")),
             )
 
-async def keep_punching(connection: QuicConnectionProtocol):
+async def keep_punching(connection: QuicConnectionProtocol, mutex: asyncio.Lock):
     reader, writer = await connection.create_stream()
     while True:
         try:
-            writer.write("punch".encode())
-            await writer.drain()
+            async with mutex:
+                writer.write("punch".encode())
+                await writer.drain()
+
             await asyncio.sleep(2)
-            print("PUCNH SENT")
         except Exception as e:
             print(e, "while punching")
 
@@ -171,11 +174,13 @@ async def start_peer(host_ip, host_port, is_tcp, server_ip):
             print("Failed to ping the host. Exit.")
             exit(1)
 
+    mutex = asyncio.Lock()
+
     async with connect(host_ip, host_port, configuration=CONFIG, local_port=SOCKET_PORT) as connection:
 
         if is_tcp:
             await asyncio.start_server(
-                lambda reader, writer: handle_local_connection_tcp(connection, reader, writer),
+                lambda reader, writer: handle_local_connection_tcp(connection, reader, writer, mutex),
                 local_ip,
                 local_port,
             )
@@ -190,7 +195,7 @@ async def start_peer(host_ip, host_port, is_tcp, server_ip):
             )
             print("Mode: UDP")
         print(f"Successfully! Your address to connect is: {local_ip}:{local_port}")
-        await asyncio.ensure_future(keep_punching(connection))
+        await asyncio.ensure_future(keep_punching(connection, mutex))
     print("connection closed.")
 
         # await asyncio.Future()
