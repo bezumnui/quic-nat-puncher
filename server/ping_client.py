@@ -1,5 +1,7 @@
 ﻿import asyncio
+import os
 import platform
+import socket
 from contextlib import asynccontextmanager
 
 from peer_connect import peer_connect
@@ -14,8 +16,7 @@ class PingClient:
 
     def get_socket_dup(self):
         if platform.system().lower() == "windows":
-            from multiprocessing.reduction import rebuild_socket
-            return rebuild_socket(self.socket.share())
+            return socket.fromshare(self.socket.share(os.getpid()))
         return self.socket.dup()
 
     @asynccontextmanager
