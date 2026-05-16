@@ -23,15 +23,20 @@ class QuicListener:
         self.commands = commands
 
     def stream_handler(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        print('streaming request')
+        print('New incoming connection')
         asyncio.ensure_future(self.on_new_message(reader, writer))
 
     async def on_new_message(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        data = await reader.read(4096)
-        print("data received", data)
-        for command in self.commands:
-            if await command.try_consume(data, reader, writer):
-                return
+        try:
+            while True:
+                data = await reader.read(self.BUFFER_SIZE)
+                if not data:
+                    break
+                for command in self.commands:
+                    if await command.try_consume(data, reader, writer):
+                        break
+        except Exception as e:
+            print("on_new_message error:", e)
 
 
 async def nat_puncher(sock: socket.socket, server_address, server_udp_port, server_ping_port):
