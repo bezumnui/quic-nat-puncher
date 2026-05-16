@@ -12,7 +12,7 @@ from utils import CommandUtils, Utils, create_socket, pipe_data
 class PipeConsumer(HostCommandConsumer):
     PREFIX = "pipe:"
 
-    def __init__(self, ip: str, port: int, is_tcp = True):
+    def __init__(self, ip: str, port: int, is_tcp=True):
         self.is_tcp = is_tcp
         self.port = port
         self.ip = ip
@@ -39,13 +39,23 @@ class PipeConsumer(HostCommandConsumer):
             writer.write(len(data).to_bytes(2, "big"))
             writer.write(data)
             await writer.drain()
+        print("eof send_to_remote")
 
     async def send_to_local(self, reader):
+        punch = b"punch"
         while True:
+            print("pref")
             try:
-                if not await reader.readexactly(len(self.PREFIX)):
+                if not (prefix := await reader.readexactly(len(self.PREFIX))):
                     print("Peer closed the connection")
                     break
+
+                if prefix.startswith(punch):
+                    continue
+
+                if not prefix.startswith(self.PREFIX.encode()):
+                    reader.feed_data(len(self.PREFIX) - 1)
+                    continue
             except IncompleteReadError:
                 print("Peer closed the connection due to timeout")
                 break
@@ -62,6 +72,7 @@ class PipeConsumer(HostCommandConsumer):
                 data,
             )
             print("sent")
+        print("eof send_to_local")
 
     async def send_by_tcp(self, reader, writer):
         local_reader, local_writer = await asyncio.open_connection(
@@ -75,5 +86,3 @@ class PipeConsumer(HostCommandConsumer):
 
     async def can_consume(self, data: bytes):
         return CommandUtils.has_prefix(data, self.PREFIX)
-
-
